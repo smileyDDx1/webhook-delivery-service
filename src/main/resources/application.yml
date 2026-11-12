@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: webhook-delivery-service
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/webhooks}
+    username: ${DATABASE_USERNAME:webhooks}
+    password: ${DATABASE_PASSWORD:webhooks}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:20}
+  jpa:
+    # don't keep a DB connection open for the whole HTTP request, only inside @Transactional methods
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that the entities match it
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  threads:
+    virtual:
+      # Tomcat request threads are virtual threads too (Java 21)
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+app:
+  security:
+    # required, the app won't start without it
+    admin-api-key: ${ADMIN_API_KEY:}
+    allow-private-urls: ${ALLOW_PRIVATE_URLS:false}
+  delivery:
+    worker-enabled: ${DELIVERY_WORKER_ENABLED:true}
+    executor-type: virtual
+    max-concurrency: 200
+    batch-size: 100
+    poll-interval: 500ms
+    http-timeout: 10s
+    lease-duration: 60s
+    reaper-interval: 30s
+    retry:
+      # 5s, 20s, 1m20s, 5m20s, 21m20s, 1h25m, 4h -> 8 attempts over about 6 hours
+      initial-delay: 5s
+      multiplier: 4
+      max-delay: 4h
+      max-attempts: 8
+      jitter: 0.2
+      max-retry-after: 1h
+    failure-threshold: 10
+    pause-duration: 5m
+    secret-rotation-grace: 24h
+  rate-limit:
+    default-events-per-second: 50
