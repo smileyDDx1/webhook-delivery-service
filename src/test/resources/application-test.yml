@@ -1,0 +1,30 @@
+# Settings for the integration tests: same code, but everything is fast so tests don't wait minutes.
+app:
+  security:
+    admin-api-key: test-admin-key
+    # the test receiver (WireMock) runs on localhost
+    allow-private-urls: true
+  delivery:
+    poll-interval: 50ms
+    http-timeout: 2s
+    lease-duration: 10s
+    # the tests call the reaper themselves
+    reaper-interval: 1h
+    retry:
+      # 200ms, 400ms, 800ms -> 4 attempts in about 1.5 seconds
+      initial-delay: 200ms
+      multiplier: 2
+      max-delay: 2s
+      max-attempts: 4
+      jitter: 0
+      max-retry-after: 3s
+    failure-threshold: 5
+    pause-duration: 2s
+    secret-rotation-grace: 1h
+  rate-limit:
+    default-events-per-second: 1000
+
+logging:
+  level:
+    com.debangshu.webhooks: INFO
+    org.testcontainers: WARN
