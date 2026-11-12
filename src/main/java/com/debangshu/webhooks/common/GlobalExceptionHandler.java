@@ -3,6 +3,8 @@ package com.debangshu.webhooks.common;
 import com.debangshu.webhooks.ratelimit.RateLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.MethodParameter;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -12,10 +14,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.ParameterErrors;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import java.util.LinkedHashMap;
@@ -91,6 +98,46 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "Validation failed", "One or more fields are invalid");
         body.setProperty("errors", errors);
         return handleExceptionInternal(ex, body, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /**
+     * When a controller method has constraints directly on a parameter (like @Size on the Idempotency-Key
+     * header) Spring validates the whole method, and a bad request body arrives here instead of in
+     * handleMethodArgumentNotValid. Same "errors" map, so clients see one format either way.
+     */
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException ex,
+                                                                            HttpHeaders headers, HttpStatusCode status,
+                                                                            WebRequest request) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (ParameterValidationResult result : ex.getParameterValidationResults()) {
+            if (result instanceof ParameterErrors bodyErrors) {
+                // a @Valid @RequestBody: one entry per invalid field
+                for (FieldError error : bodyErrors.getFieldErrors()) {
+                    errors.putIfAbsent(error.getField(), error.getDefaultMessage());
+                }
+            } else {
+                // a @RequestParam / @RequestHeader with a constraint on it
+                for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                    errors.putIfAbsent(nameOf(result.getMethodParameter()), error.getDefaultMessage());
+                }
+            }
+        }
+        ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "Validation failed", "One or more fields are invalid");
+        body.setProperty("errors", errors);
+        return handleExceptionInternal(ex, body, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    private static String nameOf(MethodParameter parameter) {
+        RequestHeader header = parameter.getParameterAnnotation(RequestHeader.class);
+        if (header != null && !header.name().isEmpty()) {
+            return header.name();
+        }
+        RequestParam param = parameter.getParameterAnnotation(RequestParam.class);
+        if (param != null && !param.name().isEmpty()) {
+            return param.name();
+        }
+        return parameter.getParameterName();
     }
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {

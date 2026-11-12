@@ -74,7 +74,11 @@ class ApplicationAdminIT extends IntegrationTest {
 
     @Test
     void pageSizeAbove100IsRejected() {
-        asAdmin().get("/api/v1/admin/applications?size=500").then().statusCode(400);
+        asAdmin().get("/api/v1/admin/applications?size=500")
+                .then()
+                .statusCode(400)
+                .body("title", equalTo("Validation failed"))
+                .body("errors.size", notNullValue());
     }
 
     @Test
