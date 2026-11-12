@@ -1,0 +1,70 @@
+### Requests for the IntelliJ HTTP client / VS Code REST Client.
+### Start everything with `docker compose up --build`, then run these top to bottom.
+
+@api = http://localhost:8080
+@adminKey = local-admin-key-change-me
+
+### 1. Create an application (copy "apiKey" from the response into @appKey below)
+POST {{api}}/api/v1/admin/applications
+Authorization: Bearer {{adminKey}}
+Content-Type: application/json
+
+{"name": "billing-service", "rateLimitPerSecond": 50}
+
+###
+@appKey = whk_paste-the-key-here
+
+### 2. Register an endpoint (the demo receiver, as seen from inside docker compose)
+POST {{api}}/api/v1/endpoints
+Authorization: Bearer {{appKey}}
+Content-Type: application/json
+
+{"url": "http://demo-receiver:9090/flaky?fail=0.5", "description": "fails half the time", "eventTypes": ["invoice.*"]}
+
+### 3. Publish an event (run it twice: the second time you get 200 + Idempotent-Replayed)
+POST {{api}}/api/v1/events
+Authorization: Bearer {{appKey}}
+Content-Type: application/json
+Idempotency-Key: invoice-42-paid
+
+{"eventType": "invoice.paid", "payload": {"invoiceId": "inv_42", "amountCents": 4999}}
+
+### 4. Event with the status of each delivery
+GET {{api}}/api/v1/events/1
+Authorization: Bearer {{appKey}}
+
+### 5. Failed deliveries ("dead letters")
+GET {{api}}/api/v1/deliveries?status=FAILED
+Authorization: Bearer {{appKey}}
+
+### 6. Attempt log of one delivery
+GET {{api}}/api/v1/deliveries/1/attempts
+Authorization: Bearer {{appKey}}
+
+### 7. Retry one delivery by hand
+POST {{api}}/api/v1/deliveries/1/retry
+Authorization: Bearer {{appKey}}
+
+### 8. Signing secret (the receiver needs it to verify signatures)
+GET {{api}}/api/v1/endpoints/1/secret
+Authorization: Bearer {{appKey}}
+
+### 9. Rotate the secret (old one keeps working for 24h)
+POST {{api}}/api/v1/endpoints/1/secret/rotate
+Authorization: Bearer {{appKey}}
+
+### 10. Endpoint stats: deliveries by status, success rate and latency of the last 24h
+GET {{api}}/api/v1/endpoints/1/stats
+Authorization: Bearer {{appKey}}
+
+### 11. Replay every failed delivery of an endpoint
+POST {{api}}/api/v1/endpoints/1/replay-failed
+Authorization: Bearer {{appKey}}
+
+### 12. Totals for the application
+GET {{api}}/api/v1/stats
+Authorization: Bearer {{appKey}}
+
+### 13. Prometheus metrics (admin key)
+GET {{api}}/actuator/prometheus
+Authorization: Bearer {{adminKey}}
